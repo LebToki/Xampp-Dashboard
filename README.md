@@ -11,4 +11,4 @@ Our index page is designed to be user-friendly and intuitive, making it easy for
 
 We're confident that our XAMPP root directory index page will enhance your development experience and streamline your workflow. Try it out today and let us know what you think!
 
-![](xampp_wallpaper.png)
+![](xampp-wallpaper.png)
