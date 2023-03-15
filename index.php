@@ -542,7 +542,7 @@ if (!$link) {
 
 				<div class="overviewcard">
 					<div class="overviewcard_icon">PHPINFO</div>
-					<div class="overviewcard_info"><a href="/dashboard/phpinfo.php" target="_blank">PHPINFO</a></div>
+					<div class="overviewcard_info"><a href="http://localhost/dashboard/phpinfo.php" target="_blank">PHPINFO</a></div>
 				</div>
 
 
@@ -563,10 +563,10 @@ if ($laraconfig['SSLEnabled'] == 0 || $laraconfig['Port'] == 80) {
 foreach ($folders as $host) {
     echo ' <div class="overviewcard_sites">
                    <div class="overviewcard_icon">
-                   <a href="'.$url.'://'.$host.'.test"> '.$host.' </a>
+                   <a href="'.$url.'://localhost/'.$host.'/"> '.$host.' </a>
                    </div>
                    <div class="overviewcard_info">
-                   <a href="'.$url.'://'.$host.'.test/wp-admin"> Admin<br><small style="font-size: 8px; color: #00c4ff;">Wordpress ?</small> </a>
+                   <a href="'.$url.'://localhost/'.$host.'/wp-admin"> Admin<br><small style="font-size: 8px; color: #00c4ff;">Wordpress ?</small> </a>
                    </div>
                    </div>';
 }
