@@ -551,8 +551,8 @@ if (!$link) {
 			</div>
 
 			<div class="main-overview wrapper">
-				<?php
-        $folders = array_filter(glob('*'), 'is_dir');
+				        <?php
+$folders = array_filter(glob('*'), 'is_dir');
 
 if ($laraconfig['SSLEnabled'] == 0 || $laraconfig['Port'] == 80) {
     $url = 'http';
@@ -561,12 +561,17 @@ if ($laraconfig['SSLEnabled'] == 0 || $laraconfig['Port'] == 80) {
 }
 
 foreach ($folders as $host) {
+    $wp_admin_link = '';
+    if (file_exists($host.'/wp-admin')) {
+        $wp_admin_link = ' <a href="'.$url.'://localhost/'.$host.'/wp-admin"> Admin<br><small style="font-size: 8px; color: #00c4ff;">Wordpress ?</small> </a>';
+    }
     echo ' <div class="overviewcard_sites">
                    <div class="overviewcard_icon">
                    <a href="'.$url.'://localhost/'.$host.'/"> '.$host.' </a>
                    </div>
                    <div class="overviewcard_info">
-                   <a href="'.$url.'://localhost/'.$host.'/wp-admin"> Admin<br><small style="font-size: 8px; color: #00c4ff;">Wordpress ?</small> </a>
+
+                   '.$wp_admin_link.'
                    </div>
                    </div>';
 }
