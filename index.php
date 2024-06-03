@@ -1,591 +1,1055 @@
-<!-----------?php
-	if (!empty($_SERVER['HTTPS']) && ('on' == $_SERVER['HTTPS'])) {
-		$uri = 'https://';
-	} else {
-		$uri = 'http://';
-	}
-	$uri .= $_SERVER['HTTP_HOST'];
-	//header('Location: '.$uri.'/dashboard/');
-	exit;
-?>
----->
-
 <?php
-// get page for phpinfo
-function getQ($getQ)
+
+/**
+ * Application: Xampp | Server Index Page
+ * Description: This is the main index page for the Xampp server, displaying server info, server vitals, sendmail
+ * mailbox and applications Author: Tarek Tarabichi <tarek@2tinteractive.com> Contributors: @LrkDev in v.2.1.2
+ * improved CakePHP and Joomla detection Contributors: @luisAntonioLAGS in v.2.2.1 Spanish Language Version: 2.3.0
+ */
+
+//-----------------------------------------------------------------------------------
+// Load language files
+//-----------------------------------------------------------------------------------
+function loadLanguage($lang)
 {
-    if (!empty($getQ)) {
-        switch ($getQ) {
-            case 'info':
-                phpinfo();
-                exit;
-                break;
-        }
+    $langFile = __DIR__ . "/assets/languages/{$lang}.json";
+    if (file_exists($langFile)) {
+        return json_decode(file_get_contents($langFile), true);
+    }
+    return [];
+}
+
+//-----------------------------------------------------------------------------------
+// Detect language preference (example: default to English)
+//-----------------------------------------------------------------------------------
+$lang = isset($_GET['lang']) ? $_GET['lang'] : 'en';
+$translations = loadLanguage($lang);
+
+const SERVER_TYPES = [
+    'php' => 'php',
+    'apache' => 'apache',
+];
+//-----------------------------------------------------------------------------------
+// Displays server status including uptime, memory usage, and disk usage.
+//-----------------------------------------------------------------------------------
+function showServerStatus(): void
+{
+    echo '<h1>Server Status</h1>';
+    // Display server uptime
+    $uptime = shell_exec('uptime');
+    echo '<h2>Uptime</h2>';
+    echo '<p>' . htmlspecialchars($uptime) . '</p>';
+
+    // Display memory usage
+    $free = shell_exec('free -m'); // memory in MB
+    echo '<h2>Memory Usage (in MB)</h2>';
+    echo '<pre>' . htmlspecialchars($free) . '</pre>';
+
+    // Display disk usage
+    $df = shell_exec('df -h'); // disk usage in human-readable format
+    echo '<h2>Disk Usage</h2>';
+    echo '<pre>' . htmlspecialchars($df) . '</pre>';
+}
+
+//-----------------------------------------------------------------------------------
+// Handles incoming query parameters and executes corresponding functionality.
+//-----------------------------------------------------------------------------------
+function handleQueryParameter(string $param): void
+{
+    switch ($param) {
+        case 'info':
+            phpinfo();
+            break;
+        case 'status':
+            showServerStatus();
+            break;
+        default:
+            throw new InvalidArgumentException("Unsupported parameter: " . htmlspecialchars($param));
     }
 }
 
-// Get PHP extensions
-function getServerExtensions($server)
-{
-    $ext = [];
+// Check if 'q' parameter is set and sanitize it
+if (isset($_GET['q'])) {
+    $queryParam = filter_input(INPUT_GET, 'q', FILTER_SANITIZE_STRING);
+    try {
+        handleQueryParameter($queryParam);
+    } catch (InvalidArgumentException $e) {
+        echo 'Error: ' . htmlspecialchars($e->getMessage());
+    }
+}
 
+const SERVER_PHP = 'php';
+const SERVER_APACHE = 'apache';
+//-----------------------------------------------------------------------------------
+// Retrieves a list of PHP extensions or Apache modules based on the specified server type.
+//-----------------------------------------------------------------------------------
+function getServerExtensions(string $server, int $columns = 2): array
+{
     switch ($server) {
-        case 'php':
-            $ext = get_loaded_extensions();
+        case SERVER_PHP:
+            $extensions = get_loaded_extensions();
             break;
-        case 'apache':
-            $ext = apache_get_modules();
+        case SERVER_APACHE:
+            if (function_exists('apache_get_modules')) {
+                $extensions = apache_get_modules();
+            } else {
+                throw new Exception('Apache modules are not available on this server.');
+            }
             break;
+        default:
+            throw new InvalidArgumentException('Invalid server name: ' . htmlspecialchars($server));
     }
 
-    sort($ext, SORT_STRING);
-    $ext = array_chunk($ext, 2);
+    sort($extensions, SORT_STRING);
+    $extensions = array_chunk($extensions, $columns);
 
-    return $ext;
+    return $extensions;
 }
 
-// Check PHP version
-function getPhpVersion()
+//-----------------------------------------------------------------------------------
+// Fetches the latest PHP version from the official PHP website and compares it with the current PHP version running on the server.
+//-----------------------------------------------------------------------------------
+function getPhpVersion(): array
 {
-    // get last version from php.net
-    $json = @file_get_contents('https://www.php.net/releases/index.php?json&version=7.2.34');
-    $data = json_decode($json);
-    $lastVersion = $data->version;
+    $url = 'https://www.php.net/releases/index.php?json&version=7';
+    $options = [
+        "ssl" => [
+            "verify_peer" => false,
+            "verify_peer_name" => false,
+        ],
+    ];
+    $json = file_get_contents($url, false, stream_context_create($options));
+    if ($json === false) {
+        throw new Exception("Unable to retrieve PHP version info from the official PHP site.");
+    }
 
-    // get current installed version
-    $phpVersion = phpversion();
+    $data = json_decode($json, true);
+    if ($data === null || !isset($data['version'])) {
+        throw new Exception("Invalid JSON or 'version' missing in the data.");
+    }
 
-    // Remove dot character from version ex: 1.2.3 to 123 and convert string to integer
-    $intLastVersion = (int) str_replace('.', '', $lastVersion);
-    $intCurVersion = (int) str_replace('.', '', $phpVersion);
+    $lastVersion = $data['version'];
+    $currentVersion = phpversion();
 
     return [
-        'lastVersion' => $lastVersion,
-        'currentVersion' => $phpVersion,
-        'intLastVer' => $intLastVersion,
-        'intCurVer' => $intCurVersion,
+        'lastVersion' => htmlspecialchars($lastVersion),
+        'currentVersion' => htmlspecialchars($currentVersion),
+        'isUpToDate' => version_compare($currentVersion, $lastVersion, '>='),
     ];
 }
 
-// Httpd Versions
-function serverInfo()
+//-----------------------------------------------------------------------------------
+// Ensure $serverInfo is defined and initialized with serverInfo() function call
+//-----------------------------------------------------------------------------------
+$serverInfo = serverInfo(); // Make sure this line is placed before you try to access $serverInfo
+
+// Before accessing an array offset, check if the variable is an array and not null
+if (is_array($serverInfo) && isset($serverInfo['httpdVer'])) {
+    //echo $serverInfo['httpdVer']; // Safely access the 'httpdVer' index
+} else {
+    // Handle the case where $serverInfo is not an array or the index 'httpdVer' is not set
+    echo "Server information is not available.";
+}
+
+//-----------------------------------------------------------------------------------
+// Gathers information about the server environment including versions of HTTP server, OpenSSL, PHP, and Xdebug, as well as document root and server name.
+//-----------------------------------------------------------------------------------
+function serverInfo(): array
 {
-    $server = explode(' ', $_SERVER['SERVER_SOFTWARE']);
-    $openSsl = isset($server[2]) ? $server[2] : null;
+    $serverSoftware = $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown Server Software';
+    $serverParts = explode(' ', $serverSoftware);
+
+    $httpdVer = $serverParts[0] ?? 'Unknown';
+    $openSslVer = isset($serverParts[2]) && strpos($serverParts[2], 'OpenSSL/') === 0 ? substr($serverParts[2], 8) : 'Not available';
+
+    $phpInfo = getPhpVersion();
+    $xdebugVersion = extension_loaded('xdebug') ? phpversion('xdebug') : 'Not installed';
 
     return [
-        'httpdVer' => $server[0],
-        'openSsl' => $openSsl,
-        'phpVer' => getPhpVersion()['currentVersion'],
-        'xDebug' => phpversion('xdebug'),
-        'docRoot' => $_SERVER['DOCUMENT_ROOT'],
+        'httpdVer' => htmlspecialchars($httpdVer),
+        'openSsl' => htmlspecialchars($openSslVer),
+        'phpVer' => htmlspecialchars($phpInfo['currentVersion']),
+        'xDebug' => htmlspecialchars($xdebugVersion),
+        'docRoot' => htmlspecialchars($_SERVER['DOCUMENT_ROOT'] ?? '/var/www/html'),
+        'serverName' => htmlspecialchars($_SERVER['HTTP_HOST'] ?? 'localhost'),
     ];
 }
 
-// get SQL version
-function getSQLVersion()
+//-----------------------------------------------------------------------------------
+// Retrieves the MySQL version by executing a shell command.
+//-----------------------------------------------------------------------------------
+function getSQLVersion(): string
 {
     $output = shell_exec('mysql -V');
-    preg_match('@[0-9]+\.[0-9]+\.[0-9-\w]+@', $output, $version);
+    if ($output === null) {
+        return "Unknown"; // Command failed to execute, possibly not installed or not in PATH
+    }
 
-    return $version[0];
+    if (preg_match('@[0-9]+\.[0-9]+\.[0-9-\w]+@', $output, $version)) {
+        return htmlspecialchars($version[0]);
+    }
+
+    return "Unknown";
 }
 
-// PHP links
-function phpDlLink($version)
+//-----------------------------------------------------------------------------------
+// Generates download and changelog links for a specific PHP version.
+//-----------------------------------------------------------------------------------
+function phpDlLink(string $version, string $branch = '7', string $architecture = 'x64'): array
 {
-    $changelog = 'https://www.php.net/ChangeLog-7.php#'.$version;
-    $downLink = 'https://windows.php.net/downloads/releases/php-'.$version.'-Win32-VC15-x64.zip';
+    $versionEscaped = htmlspecialchars($version, ENT_QUOTES, 'UTF-8');
+    $branchEscaped = htmlspecialchars($branch, ENT_QUOTES, 'UTF-8');
+    $architectureEscaped = htmlspecialchars($architecture, ENT_QUOTES, 'UTF-8');
 
     return [
-        'changeLog' => $changelog,
-        'downLink' => $downLink,
+        'changeLog' => "https://www.php.net/ChangeLog-$branchEscaped.php#$versionEscaped",
+        'downLink' => "https://windows.php.net/downloads/releases/php-$versionEscaped-Win32-VC15-$architectureEscaped.zip",
     ];
 }
 
-// define sites-enabled directory
-function getSiteDir()
+//-----------------------------------------------------------------------------------
+// Determines the directory path for server-specific site configuration based on the server software.
+//-----------------------------------------------------------------------------------
+function getSiteDir(): string
 {
-    if (preg_match('/^Apache/', $_SERVER['SERVER_SOFTWARE'])) {
-        return '../laragon/etc/apache2/sites-enabled';
+    // Check if Xampp is installed on C or D drive and this then checks whichever works and uses it
+    // so it would be $rootDir = 'C:/Xampp/etc/apache2/sites-enabled'; or $rootDir = 'D:/Xampp/etc/apache2/sites-enabled';
+    $drive = strtoupper(substr(PHP_OS, 0, 1));
+    $rootDir = $drive . ':/xampp/apache/conf/extra';
+    if (strpos(strtolower($rootDir), 'c:') !== false) {
+        $xamppDir = str_replace('D:', 'C:', $rootDir);
     } else {
-        return '../laragon/etc/nginx/sites-enabled';
+        $xamppDir = $rootDir;
     }
+    $rootDir = 'D:/xampp/apache/conf/extra';
+
+    if ($rootDir === false) {
+        throw new RuntimeException("Unable to determine the root directory.");
+    }
+
+    // Ensures that SERVER_SOFTWARE is set and not empty
+    if (!isset($_SERVER['SERVER_SOFTWARE']) || trim($_SERVER['SERVER_SOFTWARE']) === '') {
+        throw new InvalidArgumentException("Server software is not defined in the server environment.");
+    }
+
+    $serverSoftware = strtolower($_SERVER['SERVER_SOFTWARE']);
+
+    if (strpos($serverSoftware, 'apache') !== false) {
+        return $rootDir;
+    } elseif (strpos($serverSoftware, 'nginx') !== false) {
+        return $rootDir; // Adjust this if needed
+    }
+
+    throw new InvalidArgumentException("Unsupported server type: " . htmlspecialchars($serverSoftware));
 }
 
-// get local sites list and remove unwanted values
-function getLocalSites()
+//-----------------------------------------------------------------------------------
+// Fetches configuration details for local sites based on server configuration files.
+//-----------------------------------------------------------------------------------
+function getLocalSites($server = 'apache', $ignoredFiles = ['.', '..', '00-default.conf']): array
 {
-    // get sites-enabled directory
-    $sitesDir = getSiteDir();
-    // scan all files in the directory
-    $scanDir = scandir($sitesDir);
-    // remove unwanted files ('.', '..', '00-default.conf' by default)
-    $rmItems = [
-        '.',
-        '..',
-        '00-default.conf',
-    ];
-
-    foreach ($rmItems as $key => $value) {
-        $line = array_search($value, $scanDir);
-        unset($scanDir[$line]);
+    try {
+        $sitesDir = getSiteDir(); // Assume getSiteDir() throws an exception if unable to determine the directory
+        $files = scandir($sitesDir);
+        if ($files === false) {
+            throw new Exception("Failed to scan directory: " . htmlspecialchars($sitesDir));
+        }
+    } catch (Exception $e) {
+        error_log($e->getMessage()); // Log the error to PHP's error log
+        return []; // Return an empty array to indicate failure gracefully
     }
 
-    return $scanDir;
+    $scanDir = array_diff($files, $ignoredFiles);
+    $sites = [];
+
+    foreach ($scanDir as $filename) {
+        $path = realpath("$sitesDir/$filename");
+        if ($path === false || !is_file($path)) {
+            continue; // Skip invalid paths or directories
+        }
+
+        $config = file_get_contents($path);
+        if ($config === false) {
+            continue; // Skip files that can't be read
+        }
+
+        if (
+            preg_match('/^\s*ServerName\s+(.+)$/m', $config, $domainMatches) &&
+            preg_match('/^\s*DocumentRoot\s+(.+)$/m', $config, $documentRootMatches)
+        ) {
+            $sites[] = [
+                'filename' => htmlspecialchars($filename),
+                'path' => htmlspecialchars($path),
+                'domain' => htmlspecialchars(str_replace(['auto.', '.conf'], '', $domainMatches[1])),
+                'documentRoot' => htmlspecialchars($documentRootMatches[1]),
+            ];
+        }
+    }
+
+    return $sites;
 }
 
-// Render list of links
-function renderLinks()
+//--------------------------------------------------------
+// Renders HTML links for local sites with XSS prevention.
+//--------------------------------------------------------
+function renderLinks(): string
 {
     ob_start();
+    $sites = getLocalSites();
 
-    foreach (getLocalSites() as $value) {
-        $start = preg_split('/^auto./', $value);
-        $end = preg_split('/.conf$/', $start[1]);
-        unset($end[1]);
+    foreach ($sites as $site) {
+        $httpLink = "http://" . htmlspecialchars($site['domain'], ENT_QUOTES, 'UTF-8');
+        $httpsLink = "https://" . htmlspecialchars($site['domain'], ENT_QUOTES, 'UTF-8');
 
-        foreach ($end as $link) {
-            $contentHttp = '<a href="http://'.$link.'">';
-            $contentHttp .= 'http://'.$link;
-            $contentHttp .= '</a>';
-            $contentHttps = '<a href="https://'.$link.'">';
-            $contentHttps .= 'https://'.$link;
-            $contentHttps .= '</a>';
-
-            echo '
-            <div class="row w800 my-2">
-                <div class="col-md-5 text-truncate tr">'.$contentHttp.' </div>
-                <div class="col-2 arrows">&xlArr; &sext; &xrArr;</div>
-                <div class="col-md-5 text-truncate tl">'.$contentHttps.'</div>
-            </div>
-            <hr>
-        ';
-        }
+        echo "<div class='row w800 my-2'>";
+        echo "<div class='col-md-5 text-truncate tr'><a href='" . $httpLink . "'>" . $httpLink . "</a></div>";
+        echo "<div class='col-2 arrows'>&xlArr; &sext; &xrArr;</div>";
+        echo "<div class='col-md-5 text-truncate tl'><a href='" . $httpsLink . "'>" . $httpsLink . "</a></div>";
+        echo "</div><hr>";
     }
 
     return ob_get_clean();
 }
 
-// check is server is Apache/nginx
-function checkHttpdServer($server)
-{
-    if ($server === 'apache') {
-        $server = ucfirst($server);
-    }
+$rootPath = realpath(__DIR__);
+$folders = array_filter(glob($rootPath . '/*'), 'is_dir');
+$ignore_dirs = array('.', '..', 'logs', 'access-logs', 'vendor', 'favicon_io', 'old', 'assets');
 
-    return preg_match("/^$server/", $_SERVER['SERVER_SOFTWARE']);
-}
-
-// ----
-
-isset($_GET['q']) ? getQ($_GET['q']) : null;
-
-$phpVer = getPhpVersion();
-$serverInfo = serverInfo();
-
-if (!empty($_GET['q'])) {
-    switch ($_GET['q']) {
-        case 'info':
-            phpinfo();
-            exit;
-            break;
+foreach ($folders as $folderPath) {
+    $host = basename($folderPath);
+    if (in_array($host, $ignore_dirs)) {
+        continue; // Skip ignored directories
     }
 }
+
+// defaults and opens servers tab as default view on initialisation
+$activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'servers';
+
 ?>
-<html>
+<!DOCTYPE html>
+<html lang="<?php echo $lang; ?>">
 
 <head>
-	<title>My Development Server</title>
-	<link href="https://fonts.googleapis.com/css?family=Open+Sans&display=swap" rel="stylesheet">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+    <title><?php echo $translations['title'] ?? 'Welcome to the XAMPP Dashboard'; ?></title>
 
-	<script>
-		const menuIconEl = $('.menu-icon');
-		const sidenavEl = $('.sidenav');
-		const sidenavCloseEl = $('.sidenav__close-icon');
+    <link href="https://fonts.googleapis.com/css?family=Pt+Sans&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Poppins:300,400,500,700&display=swap">
+    <link rel="stylesheet" href="assets/style.css">
 
-		// Add and remove provided class names
-		function toggleClassName(el, className) {
-			if (el.hasClass(className)) {
-				el.removeClass(className);
-			} else {
-				el.addClass(className);
-			}
-		}
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap-grid.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap-reboot.min.css" />
 
-		// Open the side nav on click
-		menuIconEl.on('click', function() {
-			toggleClassName(sidenavEl, 'active');
-		});
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/brands.min.css" />
 
-		// Close the side nav on click
-		sidenavCloseEl.on('click', function() {
-			toggleClassName(sidenavEl, 'active');
-		});
-	</script>
+    <!----- Javascript Library over CDN -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
-	<style>
-		body {
-			margin: 0;
-			padding: 0;
-			color: #fff;
-			font-family: 'Rubik', sans-serif;
-			box-sizing: border-box;
-		}
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/js/bootstrap.min.js"></script>
 
-		a {
-			font-family: "Rubik", Sans-serif, serif;
-			text-transform: uppercase;
-			font-size: 16px !important;
-			color: #FFFFFF !important;
-			text-decoration: none;
-		}
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/js/all.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/js/fontawesome.min.js"></script>
 
-		/* Assign grid instructions to our parent grid container, mobile-first (hide the sidenav) */
-		.grid-container {
-			display: grid;
-			grid-template-columns: 1fr;
-			grid-template-rows: 50px 1fr 50px;
-			grid-template-areas: 'header' 'main' 'footer';
-			height: 100vh;
-		}
+    <!--- Chart.js v4.4.3 CDN----->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 
-		/* Give every child element its grid name */
-		.header {
-			grid-area: header;
-			display: flex;
-			align-items: center;
-			justify-content: space-between;
-			padding: 0 16px;
-			color: #ffffff;
-			font-family: "Rubik", Sans-serif;
-			background-color: #0b162c;
-		}
-
-		.main {
-			grid-area: main;
-			/* background-color: #e5e5e5; */
-			background: url(background2.jpg) no-repeat center center fixed;
-			-webkit-background-size: cover;
-			-moz-background-size: cover;
-			-o-background-size: cover;
-			background-size: cover;
-		}
-
-		.main-header {
-			display: flex;
-			justify-content: space-between;
-			margin: 20px;
-			padding: 20px;
-			height: 150px;
-			background-color: #fca311;
-			color: #14213d;
-		}
-
-		.main-overview {
-			display: grid;
-			grid-template-columns: repeat(auto-fit, minmax(265px, 1fr));
-			grid-auto-rows: 71px;
-			grid-gap: 20px;
-			margin: 10px;
-		}
+    <!--- Favicon -------->
+    <link rel="icon" href="assets/favicon/favicon.ico" type="image/x-icon">
+    <link rel="icon" type="image/png" href="assets/favicon/favicon-16x16.png" sizes="16x16">
+    <link rel="icon" type="image/png" href="assets/favicon/favicon-32x32.png" sizes="32x32">
+    <link rel="icon" type="image/png" href="assets/favicon/android-chrome-192x192.png" sizes="192x192">
+    <link rel="icon" type="image/png" href="assets/favicon/android-chrome-512x512.png" sizes="512x512">
+    <link rel="icon" type="apple-touch-icon" href="assets/favicon/apple-touch-icon.png">
+    <link rel="manifest" href="assets/favicon/site.webmanifest">
 
 
-		.wrapper {
-			display: grid;
-			grid-template-columns: repeat(4, 1fr);
-			gap: 10px;
-		}
+    <script>
+    $(document).ready(function() {
+        $('.tab').click(function() {
+            var tab_id = $(this).attr('data-tab');
 
-		.overviewcard {
-			display: flex;
-			align-items: center;
-			justify-content: space-between;
-			padding: 15px;
-			background-color: #00adef;
-			/*-----00adef    -----*/
-			font-family: "Rubik", Sans-serif, serif;
-			border-radius: 5px 5px;
-			font-size: 16px;
-			color: #FFFFFF !important;
-			line-height: 1;
-			height: 31px;
-		}
+            $('.tab').removeClass('active');
+            $('.tab-content').removeClass('active');
 
-		.overviewcard_sites {
-			display: flex;
-			align-items: center;
-			justify-content: space-between;
-			padding: 15px;
-			background-color: #023e8a;
-			/*-----00adef    -----*/
-			font-family: "Rubik", Sans-serif, serif;
-			border-radius: 5px 5px;
-			font-size: 16px;
-			color: #FFFFFF !important;
-			line-height: 1;
-			height: 31px;
-		}
+            $(this).addClass('active');
+            $("#" + tab_id).addClass('active');
+        });
 
-		.overviewcard_info {
-			font-family: "Rubik", Sans-serif, serif;
-			text-transform: uppercase;
-			font-size: 16px !important;
-			color: #FFFFFF !important;
-		}
+        $('#language-selector').change(function() {
+            var lang = $(this).val();
+            window.location.href = "?lang=" + lang;
+        });
+    });
+    </script>
+    <style>
+    /*----------------------------------------*/
+    /* ===== Scrollbar CSS ===== */
+    /*----------------------------------------*/
+    /* Firefox */
+    * {
+        scrollbar-width: auto;
+        scrollbar-color: #ec1c7e #ffffff;
+    }
 
-		.overviewcard_icon {
-			font-family: "Rubik", Sans-serif, serif;
-			text-transform: uppercase;
-			font-size: 16px !important;
-			color: #FFFFFF !important;
-		}
+    /* Chrome, Edge, and Safari */
+    *::-webkit-scrollbar {
+        width: 16px;
+    }
 
-		.main-cards {
-			column-count: 0;
-			column-gap: 20px;
-			margin: 20px;
-		}
+    *::-webkit-scrollbar-track {
+        background: #ffffff;
+    }
 
-		.card {
-			display: flex;
-			flex-direction: column;
-			align-items: center;
-			width: 100%;
-			background-color: #f1faee;
-			margin-bottom: 20px;
-			-webkit-column-break-inside: avoid;
-			padding: 24px;
-			box-sizing: border-box;
-		}
+    *::-webkit-scrollbar-thumb {
+        background-color: #ec1c7e;
+        border-radius: 10px;
+        border: 3px solid #ffffff;
+    }
 
-		/* Force varying heights to simulate dynamic content */
-		.card:first-child {
-			height: 300px;
-		}
+    /*---------------------------*/
+    /* Main Page Container Styling */
+    /*---------------------------*/
+    .grid-container {
+        grid-area: main;
+        background: url(assets/background2.jpg) no-repeat center center fixed;
+        -webkit-background-size: cover;
+        -moz-background-size: cover;
+        -o-background-size: cover;
+        background-size: cover;
+    }
 
-		.card:nth-child(2) {
-			height: 200px;
-		}
+    /*---------------------------*/
+    /* Navigation Styling */
+    /*---------------------------*/
+    nav {
+        grid-area: nav;
+        align-items: start;
+        justify-content: space-between;
+        padding: 0 20px;
+        background-color: #0B162C !important;
+        color: #ffffff !important;
+        font-family: "Poppins", Sans-serif, serif !important;
+    }
 
-		.card:nth-child(3) {
-			height: 265px;
-		}
+    /*---------------------------*/
+    /* Tabs Styling */
+    /*---------------------------*/
+    .tab {
+        align-items: center;
+        background-color: #0A66C2;
+        border: 0;
+        border-radius: 100px;
+        box-sizing: border-box;
+        color: #ffffff;
+        cursor: pointer;
+        display: inline-flex;
+        font-family: "Poppins", Sans-serif, serif !important;
+        font-size: 16px;
+        font-weight: 600;
+        justify-content: center;
+        line-height: 20px;
+        max-width: 480px;
+        min-height: 40px;
+        min-width: 0;
+        overflow: hidden;
+        padding: 0 20px;
+        text-align: center;
+        touch-action: manipulation;
+        transition: background-color 0.167s cubic-bezier(0.4, 0, 0.2, 1) 0s, box-shadow 0.167s cubic-bezier(0.4, 0, 0.2, 1) 0s, color 0.167s cubic-bezier(0.4, 0, 0.2, 1) 0s;
+        user-select: none;
+        -webkit-user-select: none;
+        vertical-align: middle;
+    }
 
-		.sites {
-			display: grid;
-			grid-template-columns: repeat(auto-fit, minmax(275px, 1fr));
-			grid-gap: 20px;
-			margin: 20px;
-		}
+    .tab:hover,
+    .tab:focus,
+        {
+        background-color: #16437E;
+        color: #ffffff;
 
-		.sites li {
-			display: flex;
-			flex-direction: column;
-			align-items: center;
-			width: 100%;
-			background: #560bad;
-			color: #ffffff;
-			font-family: 'Rubik', sans-serif;
-			font-size: 14px;
-			text-align: left;
-			text-transform: uppercase;
-			margin-bottom: 20px;
-			-webkit-column-break-inside: avoid;
-			padding: 24px;
-			box-sizing: border-box;
-		}
+    }
+
+    .tab:disabled {
+        cursor: not-allowed;
+        background: rgba(0, 0, 0, .08);
+        color: rgba(0, 0, 0, .3);
+    }
+
+    .tab.active {
+        background: #09223b;
+        color: rgb(255, 255, 255, .7);
+    }
+
+    .tab-content {
+        display: none;
+    }
+
+    .tab-content.active {
+        display: block;
+    }
+
+    /*---------------------------*/
+    /* Language Selector Styling */
+    /*---------------------------*/
+    select#language-selector {
+        background-color: #fff;
+        padding: 5px;
+        border-radius: 25px;
+        border: 1px solid #ccc;
+    }
+
+    .main-overview {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(265px, 1fr));
+        grid-auto-rows: 71px;
+        grid-gap: 20px;
+        margin: 10px;
+    }
 
 
-		.sites li:hover {
-			box-shadow: 0 0 15px 0 #bbb;
-		}
+    .wrapper {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+    }
 
-		.sites li:hover svg {
-			fill: #ffffff;
-		}
+    /*----------------------------------------*/
+    /*-------OVERVIEW CARDS--------------*/
+    /*----------------------------------------*/
+    .overviewcard {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 15px;
+        background-color: #00adef;
+        font-family: "Rubik", Sans-serif, serif;
+        border-radius: 5px 5px;
+        font-size: 16px;
+        color: #FFFFFF !important;
+        line-height: 1;
+        height: 31px;
+    }
 
-		.sites li:hover a {
-			color: #ffffff;
-		}
+    .overviewcard_sites {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 15px;
+        background-color: #023e8a;
+        /*-----00adef    -----*/
+        font-family: "Rubik", Sans-serif, serif;
+        border-radius: 5px 5px;
+        font-size: 16px;
+        color: #FFFFFF !important;
+        line-height: 1;
+        height: 31px;
+    }
 
-		.sites li a {
-			display: block;
-			padding-left: 48px;
-			color: #f2f2f2;
-			transition: color 250ms ease-in-out;
-		}
+    .overviewcard_info {
+        font-family: "Rubik", Sans-serif, serif;
+        text-transform: uppercase;
+        font-size: 16px !important;
+        color: #FFFFFF !important;
+    }
 
-		.sites img {
-			position: absolute;
-			margin: 8px;
-			margin-left: -40px;
-			fill: #f2f2f2;
-			transition: fill 250ms ease-in-out;
-		}
+    .overviewcard_icon {
+        font-family: "Rubik", Sans-serif, serif;
+        text-transform: uppercase;
+        font-size: 16px !important;
+        color: #FFFFFF !important;
+    }
 
-		.sites svg {
-			position: absolute;
-			margin: 16px;
-			margin-left: -40px;
-			fill: #f2f2f2;
-			transition: fill 250ms ease-in-out;
-		}
 
-		.footer {
-			grid-area: footer;
-			display: flex;
-			align-items: center;
-			justify-content: space-between;
-			padding: 0 16px;
-			background-color: #0b162c;
-			color: #ffffff;
-		}
+    .overviewcard4 {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 15px;
+        background-color: #031A24;
+        /*-----00adef    -----*/
+        font-family: "Rubik", Sans-serif, serif;
+        border-radius: 5px 5px;
+        font-size: 16px;
+        color: #FFFFFF !important;
+        line-height: 1;
+        height: 31px;
+    }
 
-		/* Non-mobile styles, 750px breakpoint */
-		@media only screen and (min-width: 46.875em) {
-			/* Show the sidenav */
-			/*.grid-container {*/
-			/*    grid-template-columns: 240px 1fr;*/
-			/*    grid-template-areas: "sidenav header" "sidenav main" "sidenav footer";*/
-			/*}*/
+    /*----------------------------------------*/
+    /*------CARDS STYLING----------*/
+    /*----------------------------------------*/
+    .main-cards {
+        column-count: 0;
+        column-gap: 20px;
+        margin: 20px;
+    }
 
-		}
+    .card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        background-color: #f1faee;
+        margin-bottom: 20px;
+        -webkit-column-break-inside: avoid;
+        padding: 24px;
+        box-sizing: border-box;
+    }
 
-		/* Medium screens breakpoint (1050px) */
-		@media only screen and (min-width: 65.625em) {
+    /* Force varying heights to simulate dynamic content */
+    .card:first-child {
+        height: 300px;
+    }
 
-			/* Break out main cards into two columns */
-			.main-cards {
-				column-count: 1;
-			}
-		}
-	</style>
+    .card:nth-child(2) {
+        height: 200px;
+    }
+
+    .card:nth-child(3) {
+        height: 265px;
+    }
+
+    /*----------------------------------------*/
+    /*Image Filter styles*/
+    /*----------------------------------------*/
+    .saturate {
+        filter: saturate(3);
+    }
+
+    .grayscale {
+        filter: grayscale(100%);
+    }
+
+    .contrast {
+        filter: contrast(160%);
+    }
+
+    .brightness {
+        filter: brightness(0.25);
+    }
+
+    .blur {
+        filter: blur(3px);
+    }
+
+    .invert {
+        filter: invert(100%);
+    }
+
+    .sepia {
+        filter: sepia(100%);
+    }
+
+    .huerotate {
+        filter: hue-rotate(180deg);
+    }
+
+    .rss.opacity {
+        filter: opacity(50%);
+    }
+
+    /*----------------------------------------*/
+    /*-- Sites Styling -----*/
+    /*----------------------------------------*/
+    .sites {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(275px, 1fr));
+        grid-gap: 20px;
+        margin: 20px;
+    }
+
+    .sites li {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        background: #560bad;
+        color: #ffffff;
+        font-family: 'Rubik', sans-serif;
+        font-size: 14px;
+        text-align: left;
+        text-transform: uppercase;
+        margin-bottom: 20px;
+        -webkit-column-break-inside: avoid;
+        padding: 24px;
+        box-sizing: border-box;
+    }
+
+
+    .sites li:hover {
+        box-shadow: 0 0 15px 0 #bbb;
+    }
+
+    .sites li:hover svg {
+        fill: #ffffff;
+    }
+
+    .sites li:hover a {
+        color: #ffffff;
+    }
+
+    .sites li a {
+        display: block;
+        padding-left: 48px;
+        color: #f2f2f2;
+        transition: color 250ms ease-in-out;
+    }
+
+    .sites img {
+        position: absolute;
+        margin: 8px 8px 8px -40px;
+        fill: #f2f2f2;
+        transition: fill 250ms ease-in-out;
+    }
+
+    .sites svg {
+        position: absolute;
+        margin: 16px 16px 16px -40px;
+        fill: #f2f2f2;
+        transition: fill 250ms ease-in-out;
+    }
+    </style>
 </head>
 
 <body>
+    <header class="header">
+        <h4><?php echo $translations['header'] ?? 'Header'; ?></h4>
 
-	<div class="grid-container">
-		<div class="menu-icon">
-			<i class="fas fa-bars header__menu"></i>
-		</div>
+        <?php
+// Get the current time
+$currentTime = new DateTime();
+$hours = $currentTime->format('H');
 
-		<header class="header">
-			<div class="header__search">My Development Server</div>
-			<div class="header__avatar">Welcome Back!</div>
-		</header>
-
-
-		<main class="main">
-
-			<div class="main-overview">
-				<div class="overviewcard">
-					<div class="overviewcard_icon">Document Root</div>
-					<div class="overviewcard_info">
-						<?php echo $_SERVER['DOCUMENT_ROOT']; ?>
-					</div>
-				</div>
-
-				<div class="overviewcard">
-					<div class="overviewcard_icon"></div>
-					<div class="overviewcard_info">
-						<?php echo $_SERVER['SERVER_SOFTWARE']; ?>
-					</div>
-				</div>
-				<div class="overviewcard">
-					<div class="overviewcard_icon"></div>
-					<div class="overviewcard_info">
-						<?= $serverInfo['openSsl']; ?>
-					</div>
-				</div>
-				<div class="overviewcard">
-					<div class="overviewcard_icon">PHP</div>
-					<div class="overviewcard_info">
-						<?php echo phpversion(); ?>
-					</div>
-				</div>
-
-
-
-			</div>
-			<div class="main-overview">
-				<div class="overviewcard">
-					<div class="overviewcard_icon">Xampp</div>
-					<div class="overviewcard_info">For Windows 8.0.25</div>
-				</div>
-
-				<div class="overviewcard">
-					<div class="overviewcard_icon">MySQL</div>
-					<div class="overviewcard_info"><?php
-                    error_reporting(0);
-
-$laraconfig = parse_ini_file('../usr/laragon.ini');
-
-$link = mysqli_connect('localhost', 'root', $laraconfig['MySQLRootPassword']);
-if (!$link) {
-    $link = mysqli_connect('localhost', 'root', 'ADD PASSWORD HERE');
+// Get the greeting based on the time of day
+if ($hours < 12) {
+    $greeting = $translations['good_morning'] ?? 'Good morning';
+} elseif ($hours < 18) {
+    $greeting = $translations['good_afternoon'] ?? 'Good Afternoon';
+} else {
+    $greeting = $translations['good_evening'] ?? 'Good Evening';
 }
+
+// Display the greeting
+echo "<h4>" . $greeting . "!</h4>";
+?>
+
+        <div>
+            <select id="language-selector">
+                <?php
+$langFiles = glob(__DIR__ . "/assets/languages/*.json");
+foreach ($langFiles as $file) {
+    $langCode = basename($file, ".json");
+    $selected = $lang === $langCode ? "selected" : "";
+    echo "<option value='$langCode' $selected>$langCode</option>";
+}
+?>
+            </select>
+        </div>
+    </header>
+    <nav>
+        <div class="tab <?php echo $activeTab === 'servers' ? 'active' : ''; ?>" data-tab="servers"><?php echo $translations['servers_tab'] ?? 'Servers'; ?></div>
+        <div class="tab <?php echo $activeTab === 'mailbox' ? 'active' : ''; ?>" data-tab="mailbox"><?php echo $translations['inbox_tab'] ?? 'Mailbox'; ?></div>
+        <div class="tab <?php echo $activeTab === 'vitals' ? 'active' : ''; ?>" data-tab="vitals"><?php echo $translations['vitals_tab'] ?? 'Server Vitals'; ?></div>
+    </nav>
+
+    <!------- Main Container ------------->
+    <div class="grid-container">
+
+        <!--------------------------------------------->
+        <!------ Servers Tab -------------------------->
+        <!--------------------------------------------->
+        <div class="tab-content <?php echo $activeTab === 'servers' ? 'active' : ''; ?>" id="servers">
+            <header class="header">
+                <div class="header__search"><?php echo $translations['breadcrumb_server_servers'] ?? 'My Development Server Servers & Applications'; ?></div>
+                <div class="header__avatar"><?php echo $translations['welcome_back'] ?? 'Welcome Back!'; ?></div>
+            </header>
+            <div class="main-overview">
+                <div class="overviewcard4">
+                    <div class="overviewcard_icon"></div>
+                    <div class="overviewcard_info"><img src="assets/Server.png" style="width:64px;"></div>
+                </div>
+
+                <div class="overviewcard">
+                    <div class="overviewcard_icon"></div>
+                    <div class="overviewcard_info">
+                        <?php echo htmlspecialchars($_SERVER['SERVER_SOFTWARE']); ?>
+                    </div>
+                </div>
+                <div class="overviewcard">
+                    <div class="overviewcard_icon">SSL</div>
+                    <div class="overviewcard_info">
+                        <?=$serverInfo['openSsl'];?>
+                    </div>
+                </div>
+                <div class="overviewcard">
+                    <div class="overviewcard_icon">PHP</div>
+                    <div class="overviewcard_info">
+                        <?php echo htmlspecialchars(phpversion()); ?>
+                    </div>
+                </div>
+            </div>
+            <div class="main-overview">
+                <div class="overviewcard">
+                    <div class="overviewcard_icon">MySQL</div>
+                    <div class="overviewcard_info">
+                        <?php
+error_reporting(0);
+$link = mysqli_connect('localhost', 'root', '');
 if (!$link) {
     echo 'MySQL not running!';
 } else {
-    printf("server version: %s\n", mysqli_get_server_info($link));
+    printf("server version: %s\n", htmlspecialchars(mysqli_get_server_info($link)));
 }
 ?>
-					</div>
-				</div>
+                    </div>
+                </div>
 
-				<div class="overviewcard">
-					<div class="overviewcard_icon">PhpMyAdmin</div>
-					<div class="overviewcard_info"><a href="http://localhost/phpmyadmin" target="_blank">Manage
-							MySQL</a></div>
-				</div>
+                <div class="overviewcard">
+                    <div class="overviewcard_icon"><?php echo $translations['document_root'] ?? 'Document Root'; ?></div>
+                    <div class="overviewcard_info">
+                        <?php echo htmlspecialchars($_SERVER['DOCUMENT_ROOT']); ?><br>
+                        <small><span><?php echo htmlspecialchars($_SERVER['HTTP_HOST']); ?></span></small>
+                    </div>
+                </div>
 
-				<div class="overviewcard">
-					<div class="overviewcard_icon">PHPINFO</div>
-					<div class="overviewcard_info"><a href="http://localhost/dashboard/phpinfo.php" target="_blank">PHPINFO</a></div>
-				</div>
+                <div class="overviewcard">
+                    <div class="overviewcard_icon">PhpMyAdmin</div>
+                    <div class="overviewcard_info">
+                        <a href="http://localhost/phpmyadmin" target="_blank">
+                            <?php echo $translations['manage_mysql'] ?? 'Manage MySQL'; ?>
+                        </a>
+                    </div>
+                </div>
 
+                <div class="overviewcard">
+                    <div class="overviewcard_icon">
+                        Xampp
+                    </div>
+                    <div class="overviewcard_info">
+                        3.3.0
+                    </div>
+                </div>
+            </div>
 
-
-
-			</div>
-
-			<div class="main-overview wrapper">
-				        <?php
+            <div class="main-overview wrapper">
+                <?php
+$ignored = array('favicon_io');
 $folders = array_filter(glob('*'), 'is_dir');
 
-if ($laraconfig['SSLEnabled'] == 0 || $laraconfig['Port'] == 80) {
-    $url = 'http';
-} else {
-    $url = 'https';
-}
-
+$ignore_dirs = array('.', '..', 'logs', 'access-logs', 'vendor', 'favicon_io', 'ablepro-90', 'assets');
 foreach ($folders as $host) {
-    $wp_admin_link = '';
-    if (file_exists($host.'/wp-admin')) {
-        $wp_admin_link = ' <a href="'.$url.'://localhost/'.$host.'/wp-admin"> Admin<br><small style="font-size: 8px; color: #00c4ff;">Wordpress ?</small> </a>';
+    if (in_array($host, $ignore_dirs) || !is_dir($host)) {
+        continue;
     }
-    echo ' <div class="overviewcard_sites">
-                   <div class="overviewcard_icon">
-                   <a href="'.$url.'://localhost/'.$host.'/"> '.$host.' </a>
-                   </div>
-                   <div class="overviewcard_info">
 
-                   '.$wp_admin_link.'
-                   </div>
-                   </div>';
+    $admin_link = '';
+    $app_name = '';
+    $avatar = '';
+
+    switch (true) {
+        case (file_exists($host . '/core') || file_exists($host . '/web/core')):
+            $app_name = ' Drupal ';
+            $avatar = 'assets/Drupal.svg';
+            $admin_link = '<a href="http://' . htmlspecialchars($host) . '.local/user" target="_blank"><small style="font-size: 8px; color: #cccccc;">' . $app_name . '</small><br>Admin</a>';
+            break;
+        case file_exists($host . '/wp-admin'):
+            $app_name = ' Wordpress ';
+            $avatar = 'assets/Wordpress.png';
+            $admin_link = '<a href="http://' . htmlspecialchars($host) . '.local/wp-admin" target="_blank"><small style="font-size: 8px; color: #cccccc;">' . $app_name . '</small><br>Admin</a>';
+            break;
+        case file_exists($host . '/administrator'):
+            $app_name = ' Joomla ';
+            $avatar = 'assets/Joomla.png';
+            $admin_link = '<a href="http://' . htmlspecialchars($host) . '.local/administrator" target="_blank"><small style="font-size: 8px; color: #cccccc;">' . $app_name . '</small><br>Admin</a>';
+            break;
+        case file_exists($host . '/public/index.php') && is_dir($host . '/app') && file_exists($host . '/.env'):
+            $app_name = ' Laravel ';
+            $avatar = 'assets/Laravel.png';
+            $admin_link = '';
+            break;
+        case file_exists($host . '/bin/console'):
+            $app_name = ' Symfony ';
+            $avatar = 'assets/Symfony.png';
+            $admin_link = '<a href="http://' . htmlspecialchars($host) . '.local/admin" target="_blank"><small style="font-size: 8px; color: #cccccc;">' . $app_name . '</small><br>Admin</a>';
+            break;
+        case (file_exists($host . '/') && is_dir($host . '/app.py') && is_dir($host . '/static') && file_exists($host . '/.env')):
+            $app_name = ' Python ';
+            $avatar = 'assets/Python.png';
+            $admin_link = '<a href="http://' . htmlspecialchars($host) . '.local/Public" target="_blank"><small style="font-size: 8px; color: #cccccc;">' . $app_name . '</small><br>Public Folder</a>';
+
+            $command = 'python ' . htmlspecialchars($host) . '/app.py';
+            exec($command, $output, $returnStatus);
+            break;
+        case file_exists($host . '/bin/cake'):
+            $app_name = ' CakePHP ';
+            $avatar = 'assets/CakePHP.png';
+            $admin_link = '<a href="http://' . htmlspecialchars($host) . '.local/admin" target="_blank"><small style="font-size: 8px; color: #cccccc;">' . $app_name . '</small><br>Admin</a>';
+            break;
+        default:
+            $admin_link = '';
+            $avatar = 'assets/Unknown.png';
+            break;
+    }
+
+    echo '<div class="overviewcard_sites"><div class="overviewcard_avatar"><img src="' . $avatar . '" style="width:20px; height:20px;"></div><div class="overviewcard_icon"><a href="http://' . htmlspecialchars($host) . '.local">' . htmlspecialchars($host) . '</a></div><div class="overviewcard_info">' . $admin_link . '</div></div>';
 }
 ?>
-			</div>
-		</main>
+            </div>
+        </div>
+
+        <!--------------------------------------------->
+        <!------ Mailbox Tab -------------------------->
+        <!--------------------------------------------->
+        <div class="tab-content <?php echo $activeTab === 'mailbox' ? 'active' : ''; ?>" id="mailbox">
+
+            <?php include 'assets/inbox/inbox.php';?>
+        </div>
+
+        <!--------------------------------------------->
+        <!------ Server's Vitals Tab -------------------------->
+        <!--------------------------------------------->
+        <div class="tab-content <?php echo $activeTab === 'vitals' ? 'active' : ''; ?>" id="vitals">
+            <header class="header">
+                <div class="header__search"><?php echo $translations['breadcrumb_server_vitals'] ?? 'My Development Server Vitals'; ?></div>
+                <div class="header__avatar"><?php echo $translations['welcome_back'] ?? 'Welcome Back'; ?></div>
+            </header>
+            <div class="container mt-5" style="width: 1440px!important;background-color: #f8f9fa;padding: 20px;border-radius: 5px;color=#000000">
+                <h1 style="text-align: center;color: #000000">Server's Vitals</h1>
+
+                <div class="row">
+
+                    <div class="col-md-6">
+                        <h2><?php echo $translations['uptime'] ?? 'Uptime'; ?></h2>
+                        <p><?php echo htmlspecialchars(shell_exec('uptime')); ?></p>
+                        <canvas id="uptimeChart"></canvas>
+                    </div>
+
+                    <div class="col-md-6">
+                        <h2><?php echo $translations['memory_usage'] ?? 'Memory Usage (in MB)'; ?></h2>
+                        <pre><?php echo htmlspecialchars(shell_exec('free -m')); ?></pre>
+                        <canvas id="memoryUsageChart"></canvas>
+                    </div>
+
+                </div>
+
+                <div class="row">
+
+                    <div class="col-md-6">
+                        <h2><?php echo $translations['disk_usage'] ?? 'Disk Usage'; ?></h2>
+                        <pre><?php echo htmlspecialchars(shell_exec('df -h')); ?></pre>
+                        <!--				<canvas id="diskUsageChart"></canvas>-->
+                    </div>
+
+                </div>
+
+            </div>
+        </div>
+    </div>
+    <!--------------------------------------------->
+    <!-------------- Footer ------------->
+    <!--------------------------------------------->
+    <footer class="footer">
+        <div class="footer__copyright">
+            <?php echo $translations['default_footer'] ?? "&copy; 2024 " . htmlspecialchars(date('Y')) . ", Tarek Tarabichi"; ?>
+        </div>
+        <div class="footer__signature">
+            <?php echo $translations['made_with_love'] ?? "Made with <span style=\"color: #e25555;\">&hearts;</span> and powered by Xampp"; ?>
+        </div>
+    </footer>
 
 
-		<footer class="footer">
-			<div class="footer__copyright">&copy; 2023 Tarek Tarabichi</div>
-			<div class="footer__signature">Made with <span style="color: #e25555;">&hearts;</span> and powered by Xampp
-			</div>
-		</footer>
-	</div>
+
+    <script>
+    // Sample data for uptime, memory usage, and disk usage charts
+    const uptimeData = [ /* Add your uptime data here */ ];
+    const memoryUsageData = [ /* Add your memory usage data here */ ];
+    const diskUsageData = [ /* Add your disk usage data here */ ];
+
+    // Uptime Chart
+    const ctxUptime = document.getElementById('uptimeChart').getContext('2d');
+    const uptimeChart = new Chart(ctxUptime, {
+        type: 'line',
+        data: {
+            labels: ['Time1', 'Time2', 'Time3'], // Add your time labels here
+            datasets: [{
+                label: 'Uptime',
+                data: uptimeData,
+                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+
+    // Memory Usage Chart
+    const ctxMemory = document.getElementById('memoryUsageChart').getContext('2d');
+    const memoryUsageChart = new Chart(ctxMemory, {
+        type: 'bar',
+        data: {
+            labels: ['Total', 'Used', 'Free'], // Memory usage categories
+            datasets: [{
+                label: 'Memory Usage (MB)',
+                data: memoryUsageData,
+                backgroundColor: [
+                    'rgba(255, 99, 132, 0.2)',
+                    'rgba(54, 162, 235, 0.2)',
+                    'rgba(75, 192, 192, 0.2)'
+                ],
+                borderColor: [
+                    'rgba(255, 99, 132, 1)',
+                    'rgba(54, 162, 235, 1)',
+                    'rgba(75, 192, 192, 1)'
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+
+    // Disk Usage Chart
+    const ctxDisk = document.getElementById('diskUsageChart').getContext('2d');
+    const diskUsageChart = new Chart(ctxDisk, {
+        type: 'doughnut',
+        data: {
+            labels: ['Used', 'Available'], // Disk usage categories
+            datasets: [{
+                label: 'Disk Usage',
+                data: diskUsageData,
+                backgroundColor: [
+                    'rgba(255, 206, 86, 0.2)',
+                    'rgba(75, 192, 192, 0.2)'
+                ],
+                borderColor: [
+                    'rgba(255, 206, 86, 1)',
+                    'rgba(75, 192, 192, 1)'
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
+    </script>
+
 </body>
 
 </html>
