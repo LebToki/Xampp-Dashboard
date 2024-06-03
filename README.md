@@ -10,7 +10,7 @@ Are you tired of sifting through a cluttered directory to find your projects and
 
 <br>
 
-![Screenshot of XAMPP Dashboard Promo ](assets/Screenshot 2024-06-03 144453.png)
+![Screenshot of XAMPP Dashboard Promo ](assets/xamppdash.png)
 
 <br>
 
