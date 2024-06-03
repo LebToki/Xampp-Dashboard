@@ -10,12 +10,10 @@ Are you tired of sifting through a cluttered directory to find your projects and
 
 <br>
 
-![Screenshot of XAMPP Dashboard Promo ](assets/LaragonDash.jpg)
-![Screenshot of XAMPP Dashboard Page](assets/01-Dashboard.png)
-![Screenshot of XAMPP Dashboard Mailbox](assets/02-MailBox.png)
-![Screenshot of XAMPP Dashboard Server Vitals](assets/03-Server-Vitals.png)
+![Screenshot of XAMPP Dashboard Promo ](assets/Screenshot 2024-06-03 144453.png)
 
 <br>
+
 Our UI automatically detects any projects and directories within your root directory, making it easy to manage your work. Plus, we've included an automated auto-detection for popular frameworks like WordPress, Laravel, and Symfony. We've gone the extra mile to provide a visually appealing and intuitive interface that's easy to navigate, so you can spend more time coding and less time searching for files. And with a responsive design, you can access our UI on any device.
 
 # ![Screenshot of Laragon Dashboard Logo](assets/favicon/favicon-32x32.png)  Key Features
