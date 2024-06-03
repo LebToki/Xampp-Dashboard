@@ -1,4 +1,4 @@
-# ![Screenshot of Laragon XAMPP Logo](assets/favicon/favicon-32x32.png)  Laragon Dashboard  
+# ![Screenshot of XAMPP XAMPP Logo](assets/favicon/favicon-32x32.png)  XAMPP Dashboard  
 
 # Welcome to the XAMPP Dashboard ! 
 
