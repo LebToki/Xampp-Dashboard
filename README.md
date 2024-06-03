@@ -6,7 +6,7 @@ Attention developers!
 Are you tired of sifting through a cluttered directory to find your projects and files? Look no further than our customized user interface designed specifically for your Laragon server.
 
 
-🚀 Pros & Devs love [XAMPP](https://apachefriends.org) and for sure will love our [laragon Dashboard](https://github.com/LebToki/xampp-Dashboard) since the combination of that stack makes it unbeatable!
+🚀 Pros & Devs love [XAMPP](https://apachefriends.org) and for sure will love our [XAMPP Dashboard](https://github.com/LebToki/xampp-Dashboard) since the combination of that stack makes it unbeatable!
 
 <br>
 
